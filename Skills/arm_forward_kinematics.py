@@ -33,7 +33,10 @@ def set_transform_base(obj_wedge, base_width=1.0, base_height=0.5):
 
     # TODO: append transformations to obj_wedge["Matrix seq"] to get it in the right position/size/orientation
     #  Scale first, then rotate, then translate
-# YOUR CODE HERE
+    obj_wedge["Matrix seq"].append({"type": "scale", "sx": base_height/2, "sy": base_width/2})
+    obj_wedge["Matrix seq"].append({"type": "rotate", "theta": np.pi/2})
+    obj_wedge["Matrix seq"].append({"type": "translate", "dx": 0.0, "dy": base_height/2})
+
     # Force recalculation of matrix
     obj_wedge["Matrix"] = mt.make_matrix_from_sequence(obj_wedge["Matrix seq"])
 
@@ -55,7 +58,8 @@ def set_transform_link(obj_square, arm_length, arm_height):
 
     # TODO: append transformations to obj_square["Matrix seq"] to get it in the right position/size/orientation
     #  Reminder that squares are defined by -1,-1 to 1,1, and so currently have side lengths of 2...
-# YOUR CODE HERE
+    obj_square["Matrix seq"].append({"type": "scale", "sx": arm_length/2, "sy": arm_height/2})
+    obj_square["Matrix seq"].append({"type": "translate", "dx": arm_length/2, "dy": 0.0})
 
     # Force recalculation of matrix
     obj_square["Matrix"] = mt.make_matrix_from_sequence(obj_square["Matrix seq"])
@@ -73,7 +77,8 @@ def set_transform_palm(obj_square, palm_width):
     @return the modified object"""
 
     # TODO: append transformations to obj_square["Matrix seq"] to get it in the right position/size/orientation
-# YOUR CODE HERE
+
+    obj_square["Matrix seq"].append({"type": "scale", "sx": palm_width/10/2, "sy": palm_width/2})
 
     # Force recalculation of matrix
     obj_square["Matrix"] = mt.make_matrix_from_sequence(obj_square["Matrix seq"])
@@ -96,7 +101,13 @@ def set_transform_finger(obj_wedge, palm_width, finger_size, b_is_top):
 
     # TODO: append transformations to obj_wedge["Matrix seq"] to get it in the right position/size/orientation
     #  b_is_top means it's the top finger...
-# YOUR CODE HERE
+
+    obj_wedge["Matrix seq"].append({"type": "scale", "sx": finger_size[0]/2, "sy": finger_size[1]/2})
+    if b_is_top:
+        obj_wedge["Matrix seq"].append({"type": "translate", "dx": finger_size[0]/2, "dy": palm_width/2})
+    else:
+        obj_wedge["Matrix seq"].append({"type": "translate", "dx": finger_size[0]/2, "dy": -palm_width/2})
+        
 
     # Force recalculation of matrix
     obj_wedge["Matrix"] = mt.make_matrix_from_sequence(obj_wedge["Matrix seq"])
@@ -210,6 +221,15 @@ def get_matrix_base(base_link):
     #  Figure out how (1, 0) should be rotated to make it point up
     #    Reminder: mt.get_xx_from_matrix is helpful here...
     #    Rotate first, then translate
+    base_x_trans = mt.get_axes_from_matrix(base_link["Matrix"])[0]*2.
+    base_x_rot = mt.get_theta_from_matrix(base_link["Matrix"])
+
+    trans_mat = mt.make_translation_matrix(base_x_trans[0], base_x_trans[1])
+    rot_mat = mt.make_rotation_matrix(base_x_rot)
+
+    mat = trans_mat@rot_mat
+
+    return mat
 # YOUR CODE HERE
 
 
@@ -217,6 +237,10 @@ def get_rotation_link(arm_link):
     """ Get JUST the rotation matrix for this link
     @param arm_link - the link dictionary, angle stored in arm_link['Angle']
     @return 3x3 rotation matrix"""
+
+    theta = arm_link["Angle"]
+    mat = mt.make_rotation_matrix(theta)
+    return mat
 
     # TODO Create a rotation matrix based on the link's angle (stored with the key "Angle")
 # YOUR CODE HERE
@@ -229,6 +253,15 @@ def get_matrix_link(arm_link):
     @param arm_link is the object that is the arm link
     @return 3x3 matrix that takes the origin, translates it to the end of the link, and then rotates by angle"""
 
+    arm_x_trans = mt.get_axes_from_matrix(arm_link["Matrix"])[0]*2
+
+    trans_mat = mt.make_translation_matrix(arm_x_trans[0], arm_x_trans[1])
+    rot_mat = mt.make_rotation_matrix(arm_link["Angle"])
+
+    mat = rot_mat@trans_mat
+
+    return mat
+   
     # TODO:
     #  Figure out where (1.0, 0.0) went on the link (that's the translation you need to apply)
     #  Figure out how (1,0) should be rotated to make it point up
@@ -256,10 +289,13 @@ def get_matrices_all_links(arm_with_angles):
 
     # Now do all of the links - the last matrix is the one that is applied to the gripper
     for link in arm_with_angles[1:-1]:
+        matrix = matrices[-1]
+        matrix = matrix@get_matrix_link(link)
+        matrices.append(matrix)
         # TODO: append a matrix to the list that is the matrix that we will multiply this link from
         #   In other words, multiply the last matrix by the matrix for this link then add it to the list
-# YOUR CODE HERE
-
+    # YOUR CODE HERE
+    
     return matrices
 
 
@@ -269,11 +305,18 @@ def get_matrix_finger(finger):
     @param finger - the finger as a dictionary
     @return a 3x3 matrix"""
 
+    finger_base = mt.get_dx_dy_from_matrix(finger["Matrix"])
+    finger_trans_to_origin = mt.make_translation_matrix(-finger_base[0], -finger_base[1])
+    finger_trans_back = mt.make_translation_matrix(finger_base[0], finger_base[1])
+    finger_rotate = mt.make_rotation_matrix(finger["Angle"])
+
+    mat = finger_trans_back@finger_rotate@finger_trans_to_origin
+
     # TODO:
     #   Translate the base of the finger back to the origin, rotate it, then translate it back out
     #   Reminder: The base of the finger can be found using mt.get_dx_dy_from_matrix
 # YOUR CODE HERE
-    return matrix
+    return mat
 
 
 # ----------------- Gripper location --------------------------
@@ -285,7 +328,14 @@ def get_gripper_location(arm_with_angles):
     @return x,y as a tuple - the location of the "grasp" point in the gripper
     """
     gripper = arm_with_angles[-1]
-    grasp_dist = gripper[0]["Grasp"]  # The distance out along the x axis that we'll call the "grasp" point
+    palm = gripper[0]
+    grasp_dist = palm["Grasp"]  # The distance out along the x axis that we'll call the "grasp" point
+    grasp_point_gripper_coord = np.array([grasp_dist, 0, 1])
+
+    matrices = get_matrices_all_links(arm_with_angles)
+    gripper_matrix = matrices[-1]@mt.make_rotation_matrix(palm["Angle"])
+
+    grasp_point = gripper_matrix@grasp_point_gripper_coord
 
     # TODO:
     # Step 1: Get the matrices
@@ -293,7 +343,7 @@ def get_gripper_location(arm_with_angles):
     # Step 3: Multiply the last matrix by [d, 0] to get the location in world coordinates
 # YOUR CODE HERE
     # Format for returning a tuple
-    return (0, 0)
+    return (grasp_point[0], grasp_point[1])
 
 
 def get_gripper_orientation(arm_with_angles):
@@ -303,6 +353,12 @@ def get_gripper_orientation(arm_with_angles):
     @return vx, vy as a tuple - the vector out of the grasp (unit length)
     """
     gripper = arm_with_angles[-1]
+    palm = gripper[0]
+    matrices = get_matrices_all_links(arm_with_angles)
+    gripper_matrix = matrices[-1]@mt.make_rotation_matrix(palm["Angle"])
+
+    grasp_point = gripper_matrix@np.transpose([1,0,0])
+
 
     # TODO:
     # Step 1: Get the matrices
@@ -310,7 +366,15 @@ def get_gripper_orientation(arm_with_angles):
     # Step 3: Get the matrix that takes (1,0) to the world
 # YOUR CODE HERE
     # Format for returning a tuple
-    return (1, 0)
+    return (grasp_point[0], grasp_point[1])
+
+    # TODO:
+    # Step 1: Get the matrices
+    # Step 2: Use the last matrix plus the rotation of the wrist to build a matrix for the gripper
+    # Step 3: Get the matrix that takes (1,0) to the world
+# YOUR CODE HERE
+    # Format for returning a tuple
+    # return (1, 0)
 
 # ----------------- Plotting routines --------------------------
 
@@ -360,7 +424,8 @@ def plot_arm_components(axs, arm, b_with_angles=False):
         # TODO: Rotate each finger by the given amount, then rotate the entire gripper by the wrist angle
         # Step 1: Edit get_matrix_finger to get the matrix to move just the finger
         # Step 2: Multiply that matrix by the rotation matrix for the palm
-# YOUR CODE HERE
+        rot_matrix = rot_matrix@get_matrix_finger(finger)
+
         plot_object_in_world_coord_system(axs[-1], finger, rot_matrix)
 
     # Draw a red line for the palm and an x at the base of the wrist and another at the finger contact points

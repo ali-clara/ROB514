@@ -115,8 +115,14 @@ def get_pts_as_numpy_array(obj):
     """ Get the points out as a 3xn array, last row 1'x (i.e., homogenous points)
     @param obj - the object
     @return numpy array of XYs"""
-    pts = None
-# YOUR CODE HERE
+    pts_list = obj["XYs"]
+    pts = np.ones((3, len(pts_list)))
+
+    for i in range(len(pts_list)):
+        pt = pts_list[i]
+        for j in range(len(pt)):
+            pts[j,i] = pt[j]
+
     return pts
 
 
@@ -222,7 +228,7 @@ if __name__ == '__main__':
     # make_object_by_clicking()
     create_worlds()
 
-    names = ["box_lower_left_world", "Star"]
+    names = ["box_lower_left_world", "Square"]
     objs = []
     for n in names:
         with open("Data/" + n + ".json", "r") as f:
