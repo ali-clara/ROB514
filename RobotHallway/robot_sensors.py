@@ -24,6 +24,7 @@ class RobotSensors:
         # Second note: all variables should be referenced with self. or they will disappear
 # YOUR CODE HERE
 
+        self.sensor_probabilities = {"door": {}, "no_door": {}, "distance_wall": {}}
         # In the GUI version, these will be called with values from the GUI after the RobotSensors instance
         #   has been created
         # Actually SET the values for the dictionaries
@@ -39,12 +40,16 @@ class RobotSensors:
         # TODO: Store the input values in TWO dictionaries (one for the door there, one for no door)
         #  Reminder: You should have created the dictionary to hold the dictionaries in the __init__ method above
         #  Second note: all variables should be referenced with self.
-# YOUR CODE HERE
+
+        self.sensor_probabilities["door"] = in_prob_see_door_if_door
+        self.sensor_probabilities["no_door"] = in_prob_see_door_if_not_door
 
     def set_distance_wall_sensor_probabilities(self, sigma=0.1):
         """ Setup the wall sensor probabilities (store them in the dictionary)
         Note: Mean is zero for this assignment
         @param sigma - sigma of noise"""
+
+        self.sensor_probabilities["distance_wall"] = {"mu": 0.0, "sigma": sigma}
 
         # Kalman assignment
         # TODO: Store the mean and standard deviation
@@ -54,7 +59,7 @@ class RobotSensors:
         """ Query the door sensor
         @param robot_gt - ground truth of robot location is in here
         @param world_gt - ground truth of where the doors are
-        @return True (thinks open) or False (thinks closed
+        @return True (thinks open) or False (thinks closed)
         """
 
         # Bayes assignment
@@ -70,7 +75,23 @@ class RobotSensors:
         # STEP 1 - generate a random number between 0 and 1
         # STEP 2 - use the random number (and your first if statement) to determine if you should return True or False
         # Note: This is just the sample_boolean code from your probabilities assignment
-# YOUR CODE HERE
+
+        # random number between zero and one
+        zero_to_one = np.random.uniform()
+        
+        # do we think we're in front of the door given we're in front of the door
+        if is_in_front_of_door:
+            if zero_to_one < self.sensor_probabilities["door"]:
+                return True
+            else:
+                return False
+
+        # do we think we're in front of the door given we're NOT in front of the door
+        elif not is_in_front_of_door:
+            if zero_to_one < self.sensor_probabilities["no_door"]:
+                return True
+            else:
+                return False
 
     def query_distance_to_wall(self, robot_gt):
         """ Return a distance reading (with correct noise) of the robot's location
@@ -80,6 +101,12 @@ class RobotSensors:
         @return distance + noise """
 
         # Kalman assignment
+        noise = np.random.normal(loc = self.sensor_probabilities["distance_wall"]["mu"], 
+                                scale = self.sensor_probabilities["distance_wall"]["sigma"], size=None)
+
+        robot_loc = robot_gt.robot_loc
+
+        return robot_loc + noise
         # TODO: Return the distance to the wall (with noise)
         #  This is the Gaussian assignment from your probabilities homework
 # YOUR CODE HERE

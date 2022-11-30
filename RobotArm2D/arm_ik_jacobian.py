@@ -29,8 +29,8 @@ def practice_jacobian():
     pt_end = [radius * np.cos(theta), radius * np.sin(theta)]
 
     # TODO: Create a 3D vector to the end point (r cos(theta), r sin(theta), 0)
+    r = np.array([pt_end[0], pt_end[1], 0])
     #   Needs to be 3D for cross product to work
-# YOUR CODE HERE
 
     # The z vector we spin around
     omega_hat = [0, 0, 1]
@@ -38,15 +38,15 @@ def practice_jacobian():
     # TODO: Take the cross product of omega_hat and r
     #  The result should always be 0 in 3rd component for a 2D vector
     #  Order matters for cross products...
-# YOUR CODE HERE
-
+    cross = np.cross(omega_hat, r)
 
     # TODO: Build the Jacobian, which in this case is a 2x1 matrix
     # This matrix takes changes in the angles to changes in x,y
     #   ... and is just the first two components of omega hat cross r
     # TODO: Set the column of the matrix to be omega hat cross r
     jacobian_matrix = np.zeros([2, 1])
-# YOUR CODE HERE
+    jacobian_matrix[0] = cross[0]
+    jacobian_matrix[1] = cross[1]
 
     # Now we'll set up a linear equation solve that looks like
     #  A x = b  (np.linalg.lstsq)
@@ -57,16 +57,21 @@ def practice_jacobian():
     #  ... in this case, use -0.01 and -0.1
     # Desired x,y change
     b_matrix = np.zeros([2, 1])
-# YOUR CODE HERE
+    b_matrix[0] = -0.01
+    b_matrix[1] = -0.1
+
     pt_new_end = [pt_end[0] - 0.01, pt_end[1] - 0.1]
 
     # TODO: Solve the matrix using np.linalg.lstsq. Should return a 1x1 matrix with an angle change
     #   Note: Use rcond=None
     d_ang = np.zeros([1, 1])
+
+    d_ang = np.linalg.lstsq(jacobian_matrix, b_matrix, rcond=None)[0]
 # YOUR CODE HERE
 
     # Check result of solve - should be the same as dx_dy
     res = jacobian_matrix @ d_ang[0]
+    print("res", res)
 
     # The actual point you end up at if you change the angle by that much
     pt_moved = [radius * np.cos(theta + d_ang[0][0]), radius * np.sin(theta + d_ang[0][0])]
@@ -93,17 +98,41 @@ def calculate_jacobian_numerically(arm, angles):
 
     # Use this value for h - it's small enough to be close to the correct derivative, but not so small that we'll
     #  run into numerical errors
-    h = 1e-6
+    h = 1e-5
 
     # TODO
     # Step 1: First, calculate gripper loc() (the current gripper location)
+    gripper_loc = afk.get_gripper_location(arm)
+    fx = gripper_loc[0]
+    fy = gripper_loc[1]
+        
     # Step 2: For each link angle (do the gripper last)
     #   Add h to the angle
     #   Calculate the new location with the new angles
     #   Subtract h from the angle
     #   Calculate (f(x+h) - f(x)) / h for the x and y location, and put it in the ith column
+   
+    for i in range(len(angles)-1):
+        angles[i] += h
+        afk.set_angles_of_arm_geometry(arm, angles)
+        gripper_new_loc = afk.get_gripper_location(arm)
+        fx_h = gripper_new_loc[0]
+        fy_h = gripper_new_loc[1]
+        angles[i] -= h
+        jacob[0,i] = (fx_h - fx) / h
+        jacob[1,i] = (fy_h - fy) / h
+
     # Step 3: Do the wrist/gripper angle the same way (but remember, that angle
     #   is stored in angles[-1][0])
+    angles[-1][0] += h
+    afk.set_angles_of_arm_geometry(arm, angles)
+    gripper_new_loc = afk.get_gripper_location(arm)
+    fx_h = gripper_new_loc[0]
+    fy_h = gripper_new_loc[1]
+    angles[-1][0] -= h
+    jacob[0,-1] = (fx_h - fx) / h
+    jacob[1,-1] = (fy_h - fy) / h
+
 # YOUR CODE HERE
     return jacob
 
@@ -153,7 +182,7 @@ def calculate_jacobian(arm, angles):
         #       Do omega_hat cross r
         #    Put the result in the n-i column in jacob - i.e., wrist should go in the last column in jacob
 # YOUR CODE HERE
-    return jacob
+        return jacob
 
 
 def solve_jacobian(jacobian, vx_vy):
@@ -162,9 +191,11 @@ def solve_jacobian(jacobian, vx_vy):
     @param - vx_vy - a 2x1 numpy array with the distance to the target point (vector_to_goal)
     @return - changes to the n joint angles, as a 1xn numpy array"""
 
+    x = np.linalg.lstsq(jacobian, vx_vy, rcond=None)
+    delta_angles = x[0]
+
     # TODO: Call numpy's linear algebra least squares (linalg.lstsq) routine to calculate A x = b
     # Reminder: lstsq returns a tuple. See docs. The returned matrix is in the first part of the tuple
-# YOUR CODE HERE
     return delta_angles
 
 
@@ -217,7 +248,10 @@ def jacobian_follow_path(arm, angles, target, b_one_step=True):
         #  You can use calculate_jacobian OR calculate_jacobian_numerically
 
         delta_angles = np.zeros(len(angles))
-# YOUR CODE HERE
+        jacobian = calculate_jacobian_numerically(arm, angles)
+        jac_sol = solve_jacobian(jacobian, vec_to_target)
+        for i in range(len(angles)):
+            delta_angles[i] = jac_sol[i]
 
         # This rarely happens - but if the matrix is degenerate (the arm is in a straight line) then the angles
         #  returned from solve_jacobian will be really, really big. The while loop below will "fix" this, but this
@@ -245,7 +279,12 @@ def jacobian_follow_path(arm, angles, target, b_one_step=True):
             #      new_angle = angle + step_size * delta_angles
             #  Calculate what the new distance would be with those angles
             new_angles = []
-# YOUR CODE HERE
+            for i in range(len(angles)-1):
+                new_angle = angles[i] + step_size*delta_angles[i]
+                new_angles.append(new_angle)
+            new_gripper_angle = [angles[-1][0] + step_size*delta_angles[-1], angles[-1][1], angles[-1][2]]
+            new_angles.append(new_gripper_angle)
+
             # Get the new distance with the new angles
             afk.set_angles_of_arm_geometry(arm, new_angles)
             new_dist = ik_gradient.distance_to_goal(arm, target)
@@ -255,7 +294,15 @@ def jacobian_follow_path(arm, angles, target, b_one_step=True):
             #   Otherwise, set b_took_one_step to True (this will break out of the loop) and
             #     set angles to be new_angles and best_distance to be new_distance
             #     set b_found_better to be True
-# YOUR CODE HERE
+
+            if new_dist > best_distance:
+                step_size /= 2.0
+            else:
+                angles = new_angles
+                best_distance = new_dist
+                b_found_better = True
+                b_took_one_step = True
+
             # Count iterations
             count_iterations += 1
 

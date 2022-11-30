@@ -35,8 +35,29 @@ class KalmanFilter:
         @param robot_sensors - for mu/sigma of wall sensor
         @param dist_reading - distance reading returned by sensor"""
 
+        # u - action we took (i.e distance moved)
+        # z - wall sensor reading
+        # robot_sensors.sensor_probabilities - probabilities for sensor readings
+        # robot_ground_truth.move_probabilities - probabilities for movement
+
+        sensor_mu = robot_sensors.sensor_probabilities["distance_wall"]["mu"]
+        sensor_sigma = robot_sensors.sensor_probabilities["distance_wall"]["sigma"]
+
+        print("sensor uncertainity", sensor_sigma)
+        print("prev sensor vals", self.mu, self.sigma)
+
+        # noise = np.random.normal(loc=sensor_mu, scale=sensor_sigma)
+
+        k = self.sigma**2 / (self.sigma**2 + sensor_sigma**2) 
+        
+        self.mu = self.mu + k*(dist_reading - self.mu)
+        self.sigma = np.sqrt((1 - k)*self.sigma**2)
+
+        print("updated sensor vals", self.mu, self.sigma)
+    
+
         # TODO: Calculate C and K, then update self.mu and self.sigma
-# YOUR CODE HERE
+
         return self.mu, self.sigma
 
     # Given a movement, update Gaussian
@@ -46,18 +67,39 @@ class KalmanFilter:
         Slides: https://docs.google.com/presentation/d/1a9FGeAQKxtAlIeDMykePcmJYF1wBNOwSUg-ts4L0N_U/edit#slide=id.p23
           Steps 2-3 (prediction steps)
         @param robot_ground_truth : robot state - has the mu/sigma for moving
-        @param amount : The control signal (the amount the robot was requested to move
+        @param amount : The control signal (the amount the robot was requested to move)
         @return : mu and sigma of new current estimated location """
 
         # TODO: Update mu and sigma by Ax + Bu equation
-# YOUR CODE HERE
+
+        # u - action we took (i.e 0.1)
+        # z - wall sensor reading
+        # robot_sensors.sensor_probabilities - probabilities for sensor readings
+        # robot_ground_truth.move_probabilities - probabilities for movement
+
+        move_mu = robot_ground_truth.move_probabilities["move_continuous"]["mu"]
+        move_sigma = robot_ground_truth.move_probabilities["move_continuous"]["sigma"]
+        # noise = np.random.normal(loc=move_mu, scale=move_sigma)
+
+        print("move uncertainty", move_sigma)
+
+        a = 1 
+        b = 1 
+
+        print("prev move vals", self.mu, self.sigma)
+
+        self.mu = a*self.mu + b*amount
+        self.sigma = np.sqrt(a**2*self.sigma**2 + move_sigma**2)
+
+        print("upated move vals", self.mu, self.sigma)
+
         return self.mu, self.sigma
 
     def one_full_update(self, robot_ground_truth, robot_sensor, u: float, z: float):
         """This is the full update loop that takes in one action, followed by a sensor reading
         Lec 3.1 Kalman filters
         Slides: https://docs.google.com/presentation/d/1a9FGeAQKxtAlIeDMykePcmJYF1wBNOwSUg-ts4L0N_U/edit#slide=id.p23
-          Prediction followed by zensor reading
+          Prediction followed by sensor reading
         Assumes the robot has been moved by the action u, then a sensor reading was taken (see test function below)
         @
         @param robot_sensor - has the robot sensor probabilities
@@ -65,6 +107,14 @@ class KalmanFilter:
         @param u will be the amount moved
         @param z will be the wall distance sensor reading
         """
+
+        self.mu, self.sigma = self.update_continuous_move(robot_ground_truth, u)
+        print("moved")
+        print("mu", self.mu, "sigma", self.sigma)
+        self.mu, self.sigma = self.update_belief_distance_sensor(robot_sensor, z)
+        print("updated")
+        print("mu", self.mu, "sigma", self.sigma)
+        
         # TODO:
         #  Step 1 predict: update your belief by the action (move the Gaussian)
         #  Step 2 correct: do the correction step (move the Gaussian to be between the current mean and the sensor reading)
